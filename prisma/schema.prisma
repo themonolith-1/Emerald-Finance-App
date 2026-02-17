@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum BankProvider {
+  plaid
+  stripe
+}
+
+model User {
+  id              String            @id
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  stripeCustomerId String?          @unique
+  bankConnections BankConnection[]
+  bankAccounts    BankAccount[]
+  bankTransactions BankTransaction[]
+  bankSyncCursors  BankSyncCursor[]
+
+  stripePaymentMethods StripePaymentMethod[]
+
+  chatSessions ChatSession[]
+}
+
+model ChatSession {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([userId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+model StripePaymentMethod {
+  id                    String   @id @default(cuid())
+  userId                String
+  stripePaymentMethodId String
+
+  brand     String?
+  last4     String?
+  expMonth  Int?
+  expYear   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stripePaymentMethodId])
+  @@index([userId])
+}
+
+model BankConnection {
+  id             String        @id @default(cuid())
+  userId         String
+  provider       BankProvider
+  providerItemId String?       @unique
+  accessTokenEnc String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts  BankAccount[]
+  cursor    BankSyncCursor?
+
+  @@index([userId])
+}
+
+model BankAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  connectionId      String
+  providerAccountId String
+
+  name         String
+  mask         String?
+  type         String?
+  subtype      String?
+  currencyCode String?
+
+  currentBalance   Float?
+  availableBalance Float?
+  lastBalanceAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection  BankConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  transactions BankTransaction[]
+
+  @@unique([connectionId, providerAccountId])
+  @@index([userId])
+}
+
+model BankTransaction {
+  id                   String   @id @default(cuid())
+  userId               String
+  accountId            String
+  providerTransactionId String
+
+  name         String
+  merchantName String?
+  amount       Float
+  isoCurrencyCode String?
+  date         DateTime
+  pending      Boolean @default(false)
+  category     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, providerTransactionId])
+  @@index([userId, date])
+}
+
+model BankSyncCursor {
+  id           String   @id @default(cuid())
+  userId       String
+  connectionId String   @unique
+  cursor       String?
+  lastSyncAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection BankConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+}
